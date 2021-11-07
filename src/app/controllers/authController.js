@@ -1,7 +1,9 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const authConfig = require("../../config/auth.json")
+const authConfig = require("../../config/auth.json");
+const crypto = require("crypto");
+const mailer = require("../../modules/mailer");
 
 const User = require("../models/user");
 
@@ -14,7 +16,6 @@ function generateToken(params = {}) {
   return token;
 }
 
-//register
 router.post('/register', async (req, res) => {
   const { email } = req.body;
   try {
@@ -35,7 +36,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-//authenticate
 router.post('/authenticate', async (req, res) => {
   const { email, password } = req.body;
 
@@ -49,12 +49,51 @@ router.post('/authenticate', async (req, res) => {
 
   user.password = undefined;
 
-
-
   res.send({
     user,
     token: generateToken({ id: user.id }),
   })
+})
+
+router.post('/forgot_password', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user)
+      return res.status(400).send({ error: "Usuário não encontrado" });
+
+    const token = crypto.randomBytes(20).toString('hex');
+
+    const now = new Date();
+    now.setHours(now.getHours() + 1);
+
+    await User.findByIdAndUpdate(user.id, {
+      '$set': {
+        passwordResetToken: token,
+        passwordResetExpires: now
+      }
+    });
+
+    mailer.sendMail({
+      to: email,
+      from: 'nascimentoleo899@gmail.com',
+      template: 'auth/forgot_password',
+      context: { token },
+    }, (err) => {
+      console.log(err)
+      if (err)
+        return res.status(400).send({ error: 'Não foi possivel enviar o email de alteração de senha, tente novamente' });
+
+      return res.send();
+    })
+
+    console.log('token: ', token);
+    console.log('expiração: ', now);
+  } catch (err) {
+    res.status(400).send({ error: 'Falha na recuperação de senha, tente novamente' })
+  }
 })
 
 module.exports = app => app.use('/auth', router);
