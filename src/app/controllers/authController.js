@@ -53,7 +53,7 @@ router.post('/authenticate', async (req, res) => {
     user,
     token: generateToken({ id: user.id }),
   })
-})
+});
 
 router.post('/forgot_password', async (req, res) => {
   const { email } = req.body;
@@ -82,17 +82,43 @@ router.post('/forgot_password', async (req, res) => {
       template: 'auth/forgot_password',
       context: { token },
     }, (err) => {
-      console.log(err)
       if (err)
         return res.status(400).send({ error: 'Não foi possivel enviar o email de alteração de senha, tente novamente' });
 
       return res.send();
     })
-
-    console.log('token: ', token);
-    console.log('expiração: ', now);
   } catch (err) {
     res.status(400).send({ error: 'Falha na recuperação de senha, tente novamente' })
+  }
+});
+
+router.post('/reset_password', async (req, res) => {
+  const { email, token, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email })
+      .select('+passwordResetToken passwordResetExpires');
+
+    if (!user)
+      return res.status(400).send({ error: "Usuário não encontrado" });
+
+    if (token !== user.passwordResetToken)
+      return res.status(400).send({ error: 'Token inválido' });
+
+    const now = new Date();
+
+    if (now > user.passwordResetExpires)
+      return res.status(400).send({ error: 'Token expirado, tente novamente gerando um novo token, ' });
+
+    user.password = password;
+
+    await user.save();
+
+    res.send();
+
+
+  } catch (err) {
+    res.status(400).send({ error: 'Falha na atualização de senha, tente novamente' });
   }
 })
 
